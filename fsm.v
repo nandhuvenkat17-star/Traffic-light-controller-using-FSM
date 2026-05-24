@@ -1,83 +1,114 @@
-`define true 1'b1
-`define false 1'b0
+`timescale 1ns/1ps
 
-`define y2r 3
-`define r2g 2
 module TSC(
-    input x,
-    input clear,
-    input clk,
-    output reg[1:0] hwy,
-    output reg[1:0] cntry
-    );
+    input  wire clk,
+    input  wire clear,
+    input  wire x,              // sensor input (traffic presence)
+    output reg  [1:0] hwy,
+    output reg  [1:0] cntry
+);
 
-reg [1:0] count;
+    // ================= STATES =================
+    localparam S0 = 3'd0;  // highway green
+    localparam S1 = 3'd1;  // highway yellow
+    localparam S2 = 3'd2;  // highway red delay
+    localparam S3 = 3'd3;  // country green
+    localparam S4 = 3'd4;  // country yellow
 
-parameter red=2'd0,
-yellow=2'd1,
-green=2'd2;
+    reg [2:0] state, nxt_state;
 
-parameter s0=3'd0,
-s1=3'd1,
-s2=3'd2,
-s3=3'd3,
-s4=3'd4;
+    // ================= COUNTER =================
+    reg [1:0] count;
 
-reg [2:0] state;
-reg [2:0] nxt_state;
+    // ================= STATE REGISTER =================
+    always @(posedge clk or posedge clear) begin
+        if (clear) begin
+            state <= S0;
+            count <= 2'd0;
+        end else begin
+            state <= nxt_state;
 
-always@(posedge clk)
-if(clear)
-state<=s0;
-else
-state<=nxt_state;
+            // simple counter for timing control
+            count <= count + 1;
+        end
+    end
 
-always@(state)
-begin 
-hwy=green;
-cntry=red;
-case(state)
-s0: ;
-s1:hwy=yellow;
-s2:hwy=red;
-s3:begin
-hwy=red;
-cntry=green;
-end
-s4: begin
-hwy=red;
-cntry=yellow;
-end
-endcase
-end
+    // ================= OUTPUT LOGIC =================
+    always @(*) begin
+        // default outputs
+        hwy   = 2'b10; // green
+        cntry = 2'b00; // red
 
-always@(state,x)
-begin
-case(state)
-s0: if(x)
-nxt_state=s1;
-else
-nxt_state=s0;
+        case (state)
+            S0: begin
+                hwy   = 2'b10; // green
+                cntry = 2'b00; // red
+            end
 
-s1: if(count==2'd3)
-nxt_state=s1;
-else
-nxt_state=s2;
+            S1: begin
+                hwy   = 2'b01; // yellow
+                cntry = 2'b00;
+            end
 
-s2: if(count==2'd2)
-nxt_state=s2;
-else
-nxt_state=s3;
+            S2: begin
+                hwy   = 2'b00; // red
+                cntry = 2'b00;
+            end
 
-s3:if(x)
-nxt_state=s3;
-else
-nxt_state=s4;
+            S3: begin
+                hwy   = 2'b00;
+                cntry = 2'b10; // green
+            end
 
-s4:if(count==2'd2)
-nxt_state=s4;
-else
-nxt_state=s0;
-endcase
-end
+            S4: begin
+                hwy   = 2'b00;
+                cntry = 2'b01; // yellow
+            end
+        endcase
+    end
+
+    // ================= NEXT STATE LOGIC =================
+    always @(*) begin
+        nxt_state = state;
+
+        case (state)
+
+            S0: begin
+                if (x)
+                    nxt_state = S1;
+                else
+                    nxt_state = S0;
+            end
+
+            S1: begin
+                if (count == 2'd2)
+                    nxt_state = S2;
+                else
+                    nxt_state = S1;
+            end
+
+            S2: begin
+                if (count == 2'd3)
+                    nxt_state = S3;
+                else
+                    nxt_state = S2;
+            end
+
+            S3: begin
+                if (!x)
+                    nxt_state = S4;
+                else
+                    nxt_state = S3;
+            end
+
+            S4: begin
+                if (count == 2'd2)
+                    nxt_state = S0;
+                else
+                    nxt_state = S4;
+            end
+
+        endcase
+    end
+
 endmodule
